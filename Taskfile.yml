@@ -20,7 +20,6 @@ tasks:
       - task: install:deps
       - task: build:init
       - task: build:init:windows
-      - ./scripts/gen_test_assets.sh
       - echo "✅ Development environment setup complete"
 
   install:deps:
