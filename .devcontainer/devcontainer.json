@@ -1,0 +1,61 @@
+{
+  "name": "pano-yawfix",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.hexdump",
+        "task.vscode-task-runner",
+        "yzhang.markdown-all-in-one",
+        "DavidAnson.vscode-markdownlint",
+        "shd101wyy.markdown-preview-enhanced",
+        "bierner.github-markdown-preview",
+        "darkriszty.markdown-table-prettify"
+      ],
+      "settings": {
+        // Markdown All in One
+        "markdown.extension.toc.githubCompatibility": true,
+        "markdown.extension.toc.updateOnSave": true,
+        "markdown.extension.print.absoluteImgPath": false,
+        // markdownlint
+        "markdownlint.config": {
+          "default": true,
+          "MD013": false // Disable line length limit
+        },
+        // Markdown Preview Enhanced
+        "markdown-preview-enhanced.previewTheme": "github-light.css",
+        "markdown-preview-enhanced.enableScriptExecution": false,
+        // GitHub Markdown Preview
+        "githubMarkdownPreview.breaks": true,
+        // Markdown Table Prettifier
+        "markdown-table-prettify.alignment": "left",
+        // --- Match C/C++ coding style to .clang-format ---
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "C_Cpp.clang_format_style": "file",
+        "C_Cpp.clang_format_fallbackStyle": "Google",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "runArgs": [
+    "--gpus=all"
+  ],
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+    "source=/etc/OpenCL,target=/etc/OpenCL,type=bind,readonly"
+  ],
+  "postCreateCommand": "task setup",
+  "remoteUser": "vscode"
+}

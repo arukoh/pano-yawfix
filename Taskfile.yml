@@ -1,0 +1,155 @@
+version: '3'
+
+vars:
+  BUILD_DIR: build/linux
+  BUILD_DIR_WINDOWS: build/windows
+  CMAKE_BUILD_TYPE: Release
+  VCPKG_ROOT: 
+    sh: echo "${VCPKG_ROOT:-/usr/local/vcpkg}"
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task --list
+
+  setup:
+    desc: "Initial setup of development environment"
+    cmds:
+      - echo "🚀 Starting development environment setup..."
+      - task: install:deps
+      - task: build:init
+      - task: build:init:windows
+      - ./scripts/gen_test_assets.sh
+      - echo "✅ Development environment setup complete"
+
+  install:deps:
+    desc: "Install dependencies (auto-detect OS)"
+    cmds:
+      - echo "📦 Installing dependencies..."
+      - |
+          if [ "$(uname -s | grep -i 'mingw\|msys\|cygwin')" ]; then
+            echo 'Installing dependencies for Windows environment';
+            vcpkg install opencl gtest:x64-windows;
+          else
+            echo 'Installing dependencies for Linux environment';
+            vcpkg install opencl gtest;
+            vcpkg install gtest:x64-mingw-static;
+          fi
+      - echo "✅ Dependency installation complete"
+
+  build:init:
+    desc: "Initialize build directory"
+    cmds:
+      - echo "🔧 Initializing build directory..."
+      - mkdir -p {{.BUILD_DIR}}
+      - cd {{.BUILD_DIR}} && cmake ../.. -DCMAKE_BUILD_TYPE={{.CMAKE_BUILD_TYPE}} -DCMAKE_TOOLCHAIN_FILE={{.VCPKG_ROOT}}/scripts/buildsystems/vcpkg.cmake -DCMAKE_PREFIX_PATH={{.VCPKG_ROOT}}/installed/x64-linux
+      - echo "✅ Build directory initialization complete"
+
+  build:
+    desc: "Build the project"
+    cmds:
+      - echo "🔨 Building..."
+      - cmake --build {{.BUILD_DIR}} --config {{.CMAKE_BUILD_TYPE}}
+      - echo "✅ Build complete"
+
+  build:init:windows:
+    desc: "Initialize build directory for Windows"
+    cmds:
+      - echo "🔧 Initializing build directory..."
+      - mkdir -p {{.BUILD_DIR_WINDOWS}}
+      - cd {{.BUILD_DIR_WINDOWS}} && cmake ../.. -DCMAKE_BUILD_TYPE={{.CMAKE_BUILD_TYPE}} -DCMAKE_TOOLCHAIN_FILE=../../cmake/mingw-w64-toolchain.cmake -DVCPKG_TARGET_TRIPLET=x64-mingw-static -DCMAKE_PREFIX_PATH={{.VCPKG_ROOT}}/installed/x64-mingw-static
+      - echo "✅ Build directory initialization complete"
+
+  build:windows:
+    desc: "Cross-compile for Windows"
+    cmds:
+      - echo "🪟 Building for Windows..."
+      - bash scripts/generate_opencl_importlib.sh
+      - cmake --build {{.BUILD_DIR_WINDOWS}} --config {{.CMAKE_BUILD_TYPE}}
+      - echo "✅ Windows build complete"
+
+  test:
+    desc: "Run unit tests"
+    cmds:
+      - task: test:unit
+
+  test:unit:
+    desc: "Run unit tests using GTest"
+    cmds:
+      - echo "🧪 Running GTest..."
+      - task: build
+      - |
+          if [ -f {{.BUILD_DIR}}/unit_tests ]; then
+            {{.BUILD_DIR}}/unit_tests
+          else
+            echo "unit_tests binary not found" && exit 1
+          fi
+      - echo "✅ Test complete"
+
+  test:memcheck:
+    desc: "Run tests with memory leak check"
+    deps: [build]
+    cmds:
+      - echo "🧪 Running tests with memory leak check..."
+      - |
+        if command -v valgrind >/dev/null 2>&1; then
+          valgrind --leak-check=full ./{{.BUILD_DIR}}/unit_tests
+        else
+          echo "Memory check tool not found" && exit 1
+        fi
+      - echo "✅ Memory leak check test complete"
+
+  clean:
+    desc: "Clean build directories"
+    cmds:
+      - echo "🧹 Cleaning..."
+      - rm -rf {{.BUILD_DIR}} {{.BUILD_DIR_WINDOWS}}
+      - echo "✅ Clean complete"
+
+  rebuild:
+    desc: "Full rebuild"
+    cmds:
+      - echo "🔄 Full rebuild..."
+      - task: clean
+      - task: build:init
+      - task: build:init:windows
+      - task: build
+      - task: build:windows
+      - echo "✅ Full rebuild complete"
+
+  check::opencl:
+    desc: "Check OpenCL environment"
+    cmds:
+      - echo "🔍 Checking OpenCL environment..."
+      - |
+        g++ -o tmp/opencl_check misc/opencl_check.cpp -lOpenCL
+        ./tmp/opencl_check
+      - echo "✅ OpenCL environment check complete"
+
+  format:
+    desc: "Code format"
+    cmds:
+      - echo "🎨 Formatting code..."
+      - find src include tests -name "*.cpp" -o -name "*.h" | xargs clang-format -i
+      - echo "✅ Code format complete"
+
+  lint:
+    desc: "Run static analysis"
+    cmds:
+      - echo "🔍 Running static analysis..."
+      - cppcheck --enable=all --std=c++17 -Iinclude --suppress=missingIncludeSystem src/
+      - echo "✅ Static analysis complete"
+
+  docs:
+    desc: "Generate documentation"
+    cmds:
+      - echo "📚 Generating documentation..."
+      - doxygen Doxyfile
+      - echo "✅ Documentation generation complete"
+
+  release:
+    desc: 'Create git tag from VERSION file and start release build'
+    cmds:
+      - bash scripts/tag_and_push.sh
+    silent: false
