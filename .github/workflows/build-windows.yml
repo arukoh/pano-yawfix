@@ -1,0 +1,102 @@
+
+name: Build Windows (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        type: string
+      target_name:
+        required: true
+        type: string
+      target_arch:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/devcontainers/cpp:ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            mingw-w64 \
+            mingw-w64-tools \
+            g++-mingw-w64-x86-64 \
+            gcc-mingw-w64-x86-64
+
+          # same as Dev Container
+          OPENCL_HEADERS_VERSION=v2024.10.24
+          git clone --branch ${OPENCL_HEADERS_VERSION} --depth 1 \
+            https://github.com/KhronosGroup/OpenCL-Headers.git /tmp/OpenCL-Headers
+          sudo mkdir -p /usr/x86_64-w64-mingw32/include/CL
+          sudo cp -r /tmp/OpenCL-Headers/CL/* /usr/x86_64-w64-mingw32/include/CL/
+          rm -rf /tmp/OpenCL-Headers
+
+      - name: Install Task
+        run: |
+          curl -sL https://taskfile.dev/install.sh | sh
+          mv ./bin/task /usr/local/bin/task
+
+      - name: Setup and cross-compile for Windows (via Taskfile)
+        run: |
+          task setup
+          task build:windows
+          ls -la build/windows/
+        env:
+          TARGET_NAME: ${{ inputs.target_name }}
+          TARGET_ARCH: ${{ inputs.target_arch }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+
+      - name: Test Windows executable (basic verification)
+        run: |
+          # Basic execution test (e.g., version output)
+          wine build/windows/pano-yawfix.exe --version || echo "Skipped: Wine runtime not available"
+
+          # Check file attributes
+          ldd build/windows/pano-yawfix.exe || echo "Skipped: Dependency check for Windows executable"
+
+      - name: Package Windows binary
+        shell: bash
+        run: |
+          mkdir -p dist/windows
+
+          # Check if the executable exists
+          if [ ! -f "build/windows/pano-yawfix.exe" ]; then
+            echo "Error: pano-yawfix.exe not found"
+            ls -la build/windows/
+            exit 1
+          fi
+
+          cp build/windows/pano-yawfix.exe dist/windows/
+
+          # Add version and architecture info
+          if [[ "$GITHUB_REF" =~ refs/tags/v(.+) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            VERSION="dev-$(date +%Y%m%d)"
+          fi
+
+          cd dist/windows
+          mv pano-yawfix.exe "pano-yawfix-v${VERSION}-${{ inputs.target_name }}-${{ inputs.target_arch }}.exe"
+
+          echo "Created files:"
+          ls -la
+          echo "File size: $(stat -c%s *.exe) bytes"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist/windows/pano-yawfix-*

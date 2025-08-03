@@ -8,131 +8,40 @@ on:
     branches: [ main ]
 
 jobs:
-  build-cross-compile:
+
+  build-windows:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      ref: ${{ github.ref }}
+      target_name: windows
+      target_arch: x86_64
+      artifact_name: pano-yawfix-windows-x64
+
+  build-linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      ref: ${{ github.ref }}
+      target_name: linux
+      target_arch: x86_64
+      artifact_name: pano-yawfix-linux-x64
+
+  release:
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: 
-          - name: "windows"
-            arch: "x86_64"
-            artifact_name: "pano-yawfix-windows-x64"
-    
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Install cross-compilation dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y \
-            mingw-w64 \
-            mingw-w64-tools \
-            g++-mingw-w64-x86-64 \
-            gcc-mingw-w64-x86-64
-          
-          # MinGW-w64用OpenCL-Headers配置（Dev Containerと同じ構成）
-          OPENCL_HEADERS_VERSION=v2024.10.24
-          git clone --branch ${OPENCL_HEADERS_VERSION} --depth 1 \
-            https://github.com/KhronosGroup/OpenCL-Headers.git /tmp/OpenCL-Headers
-          sudo mkdir -p /usr/x86_64-w64-mingw32/include/CL
-          sudo cp -r /tmp/OpenCL-Headers/CL/* /usr/x86_64-w64-mingw32/include/CL/
-          rm -rf /tmp/OpenCL-Headers
-          
-      - name: Install Task
-        run: |
-          curl -sL https://taskfile.dev/install.sh | sh
-          sudo mv ./bin/task /usr/local/bin/task
-          
-      - name: Setup vcpkg and dependencies
-        run: |
-          git clone https://github.com/Microsoft/vcpkg.git ~/vcpkg
-          ~/vcpkg/bootstrap-vcpkg.sh
-          
-          # Install dependencies for MinGW-w64
-          ~/vcpkg/vcpkg install nlohmann-json:x64-mingw-static
-          ~/vcpkg/vcpkg install tabulate:x64-mingw-static
-          ~/vcpkg/vcpkg install gtest:x64-mingw-static
-          
-          # Set vcpkg path to environment variable
-          echo "VCPKG_ROOT=$(realpath ~/vcpkg)" >> $GITHUB_ENV
-          
-      - name: Cross-compile for Windows
-        run: |
-          # Set vcpkg path with environment variable
-          export VCPKG_ROOT=${{ env.VCPKG_ROOT }}
-          
-          # Automatic setup with Taskfile (only build since dependencies are already installed)
-          task build:init:windows
-          task build:windows
-          
-          # Check build artifacts
-          ls -la build/windows/
-          file build/windows/pano-yawfix.exe
-        env:
-          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
-          
-      - name: Test Windows executable (basic verification)
-        run: |
-          # Basic execution test (e.g., version output)
-          wine build/windows/pano-yawfix.exe --version || echo "Skipped: Wine runtime not available"
-          
-          # Check file attributes
-          file build/windows/pano-yawfix.exe
-          ldd build/windows/pano-yawfix.exe || echo "Skipped: Dependency check for Windows executable"
-          
-      - name: Package Windows binary
-        run: |
-          mkdir -p dist/windows
-          
-          # Check if the executable exists
-          if [ ! -f "build/windows/pano-yawfix.exe" ]; then
-            echo "Error: pano-yawfix.exe not found"
-            ls -la build/windows/
-            exit 1
-          fi
-          
-          cp build/windows/pano-yawfix.exe dist/windows/
-          
-          # Add version and architecture info
-          if [[ "$GITHUB_REF" =~ refs/tags/v(.+) ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-          else
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          
-          cd dist/windows
-          mv pano-yawfix.exe "pano-yawfix-v${VERSION}-windows-${{ matrix.target.arch }}.exe"
-          
-          echo "Created files:"
-          ls -la
-          echo "File size: $(stat -c%s *.exe) bytes"
-          
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: ${{ matrix.target.artifact_name }}
-          path: dist/windows/pano-yawfix-*
-
-
-  release:
-    needs: [build-cross-compile]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          pano-yawfix-windows-x64/pano-yawfix-*
-        generate_release_notes: true
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            pano-yawfix-windows-x64/pano-yawfix-*
+            pano-yawfix-linux-x64/pano-yawfix-*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

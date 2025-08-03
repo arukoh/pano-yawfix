@@ -14,27 +14,49 @@ tasks:
       - task --list
 
   setup:
-    desc: "Initial setup of development environment"
+    desc: "Initial setup of development environment (auto-detect target)"
     cmds:
       - echo "🚀 Starting development environment setup..."
-      - task: install:deps
-      - task: build:init
-      - task: build:init:windows
+      - |
+          if [ -n "$CI" ]; then
+            if [ "$TARGET_NAME" = "windows" ]; then
+              task install:deps:windows
+              task build:init:windows
+            elif [ "$TARGET_NAME" = "linux" ]; then
+              task install:deps:linux
+              task build:init
+            else
+              echo "Unknown TARGET_NAME for CI: $TARGET_NAME" && exit 1
+            fi
+          else
+            # devcontainerやローカル
+            task install:deps:all
+            task build:init
+            task build:init:windows
+          fi
       - echo "✅ Development environment setup complete"
 
-  install:deps:
-    desc: "Install dependencies (auto-detect OS)"
+
+  install:deps:windows:
+    desc: "Install dependencies for Windows cross-build"
     cmds:
-      - echo "📦 Installing dependencies..."
-      - |
-          if [ "$(uname -s | grep -i 'mingw\|msys\|cygwin')" ]; then
-            echo 'Installing dependencies for Windows environment';
-            vcpkg install opencl gtest:x64-windows;
-          else
-            echo 'Installing dependencies for Linux environment';
-            vcpkg install opencl gtest;
-            vcpkg install gtest:x64-mingw-static;
-          fi
+      - echo "📦 Installing Windows cross-build dependencies..."
+      - vcpkg install opencl gtest:x64-mingw-static
+      - echo "✅ Dependency installation complete"
+
+  install:deps:linux:
+    desc: "Install dependencies for Linux build"
+    cmds:
+      - echo "📦 Installing Linux build dependencies..."
+      - vcpkg install opencl gtest
+      - echo "✅ Dependency installation complete"
+
+  install:deps:all:
+    desc: "Install all dependencies (devcontainer/local)"
+    cmds:
+      - echo "📦 Installing all dependencies (Linux + Windows cross-build)..."
+      - vcpkg install opencl gtest
+      - vcpkg install gtest:x64-mingw-static
       - echo "✅ Dependency installation complete"
 
   build:init:
