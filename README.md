@@ -103,3 +103,7 @@ task test              # Run all tests
 task test:memcheck     # Memory leak check
 task lint              # Static analysis
 ```
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
